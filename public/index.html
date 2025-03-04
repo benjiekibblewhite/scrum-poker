@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scrum Poker</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Scrum Poker</h1>
+    <div id="landing">
+      <button id="newSession">Start New Session</button>
+    </div>
+    <div id="nameInput" class="hidden">
+      <p>Enter your name:</p>
+      <input type="text" id="userName" placeholder="Your name" />
+      <button id="joinSession">Join Session</button>
+    </div>
+    <div id="session" class="hidden">
+      <p>Session ID: <span id="sessionId"></span></p>
+      <p>Share this URL: <a id="sessionUrl" target="_blank"></a></p>
+      <div id="voteButtons">
+        <button class="vote" data-value="1">1</button>
+        <button class="vote" data-value="2">2</button>
+        <button class="vote" data-value="3">3</button>
+        <button class="vote" data-value="5">5</button>
+        <button class="vote" data-value="8">8</button>
+      </div>
+      <button id="reveal">Reveal Votes</button>
+      <button id="clearVotes">Clear Votes</button>
+      <button id="hideVotes">Hide Votes</button>
+      <div id="votes" class="hidden"></div>
+    </div>
+    <script>
+      let userName = "";
+      let sessionState = { users: {}, votes: {}, votesRevealed: false };
+      let ws;
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get("session");
+
+        if (sessionId) {
+          document.getElementById("landing").classList.add("hidden");
+          document.getElementById("nameInput").classList.remove("hidden");
+          document
+            .getElementById("joinSession")
+            .addEventListener("click", () => {
+              userName = document.getElementById("userName").value.trim();
+              if (userName) {
+                document.getElementById("nameInput").classList.add("hidden");
+                document.getElementById("session").classList.remove("hidden");
+                document.getElementById("sessionId").textContent = sessionId;
+                document.getElementById("sessionUrl").textContent =
+                  window.location.href;
+                document.getElementById("sessionUrl").href =
+                  window.location.href;
+                initWebSocket(sessionId);
+              }
+            });
+        }
+      });
+
+      document
+        .getElementById("newSession")
+        .addEventListener("click", async () => {
+          const res = await fetch("/new-session");
+          const data = await res.json();
+          window.location.href = `?session=${data.sessionId}`;
+        });
+
+      function updateVotesDisplay() {
+        const votesDiv = document.getElementById("votes");
+        let users = Object.entries(sessionState.users);
+
+        // Sort users by their votes if votes are revealed
+        if (sessionState.votesRevealed) {
+          users.sort((a, b) => {
+            const voteA = sessionState.votes[a[0]] || 0;
+            const voteB = sessionState.votes[b[0]] || 0;
+            return voteA - voteB;
+          });
+        }
+
+        votesDiv.innerHTML =
+          "<h2>Votes</h2>" +
+          users
+            .map(([name, user]) => {
+              const onlineStatus = user.online ? "🟢" : "🔴";
+              const vote = sessionState.votes[name];
+              const voteDisplay = vote
+                ? sessionState.votesRevealed
+                  ? vote
+                  : "🃟"
+                : "";
+              return `<p>${name}: ${onlineStatus} ${voteDisplay} <button class="removeUser" data-name="${name}">Remove</button></p>`;
+            })
+            .join("");
+        votesDiv.classList.remove("hidden");
+
+        document.querySelectorAll(".removeUser").forEach((button) => {
+          button.addEventListener("click", () => {
+            ws.send(
+              JSON.stringify({ type: "remove_user", name: button.dataset.name })
+            );
+          });
+        });
+      }
+
+      function removedFromSession() {
+        const votesDiv = document.getElementById("votes");
+        votesDiv.innerHTML = `<h1>You have been removed from the session</h1>`;
+      }
+
+      function initWebSocket(sessionId) {
+        ws = new WebSocket(`ws://${window.location.host}/session/${sessionId}`);
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: "join", name: userName }));
+          ws.send(JSON.stringify({ type: "get_state" }));
+        };
+
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === "state") {
+            sessionState = message.state;
+            updateVotesDisplay();
+          }
+          if (message.type === "votes_revealed") {
+            sessionState.votesRevealed = true;
+            updateVotesDisplay();
+          }
+          if (message.type === "votes_cleared") {
+            sessionState.votes = {};
+            sessionState.votesRevealed = false;
+            document.getElementById("votes").classList.add("hidden");
+          }
+          if (message.type === "votes_hidden") {
+            sessionState.votesRevealed = false;
+            updateVotesDisplay();
+          }
+          if (message.type === "vote") {
+            sessionState.votes[message.name] = message.value;
+            updateVotesDisplay();
+          }
+          if (message.type === "user_removed") {
+            if (message.name === userName) {
+              delete sessionState.users[message.name];
+              delete sessionState.votes[message.name];
+              updateVotesDisplay();
+              ws.close();
+              removedFromSession();
+            }
+          }
+        };
+
+        document.querySelectorAll(".vote").forEach((button) => {
+          button.addEventListener("click", () => {
+            ws.send(
+              JSON.stringify({
+                type: "vote",
+                name: userName,
+                value: button.dataset.value,
+              })
+            );
+          });
+        });
+
+        document.getElementById("reveal").addEventListener("click", () => {
+          ws.send(JSON.stringify({ type: "reveal" }));
+        });
+
+        document.getElementById("clearVotes").addEventListener("click", () => {
+          ws.send(JSON.stringify({ type: "clear_votes" }));
+        });
+
+        document.getElementById("hideVotes").addEventListener("click", () => {
+          ws.send(JSON.stringify({ type: "hide_votes" }));
+        });
+
+        window.addEventListener("beforeunload", () => {
+          ws.send(JSON.stringify({ type: "disconnected", name: userName }));
+        });
+      }
+    </script>
+  </body>
+</html>
