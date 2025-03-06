@@ -408,7 +408,6 @@
 
         votesDiv.innerHTML = users
           .map(([name, user]) => {
-            const onlineStatus = user.online ? "🟢" : "🔴";
             const vote = sessionState.votes[name];
             const voteDisplay = getVoteDisplay(
               sessionState.votesRevealed,
@@ -418,7 +417,6 @@
             return `
               <div class="vote-slot" data-user="${name}">
                 <div class="user-info">
-                  <span>${onlineStatus}</span>
                   <span>${name}</span>
                 </div>
                 <div class="cards-area">
@@ -438,10 +436,17 @@
 
         document.querySelectorAll(".removeUser").forEach((button) => {
           button.addEventListener("click", () => {
-            confirm("Are you sure you want to remove this user?");
-            ws.send(
-              JSON.stringify({ type: "remove_user", name: button.dataset.name })
+            const shouldRemove = confirm(
+              "Are you sure you want to remove this user?"
             );
+            if (shouldRemove) {
+              ws.send(
+                JSON.stringify({
+                  type: "remove_user",
+                  name: button.dataset.name,
+                })
+              );
+            }
           });
         });
       }
