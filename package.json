@@ -6,7 +6,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "clean": "rm -rf dist",
     "copy-static": "mkdir -p dist/public && cp -R public/* dist/public/",
-    "build": "npm run clean && tsc && npm run copy-static",
+    "build": "npm i && npm run clean && tsc && npm run copy-static",
     "start": "node index.ts",
     "dev": "nodemon --legacy-watch",
     "serve": "node dist/index.js"
