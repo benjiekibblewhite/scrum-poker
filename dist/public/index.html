@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Scrum Poker</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+    <script src="./elements.cardmeister.min.js"></script>
+    <style>
+      body {
+        font-family: "Poppins", sans-serif;
+        text-align: center;
+        background-color: #0b1416;
+        color: #ffffff;
+      }
+
+      a {
+        color: #ffffff;
+      }
+
+      main {
+        padding: 16px;
+        margin: 0 auto;
+        max-width: 800px;
+      }
+
+      label {
+        display: block;
+        input {
+          display: block;
+          width: 100%;
+          max-width: 400px;
+          padding: 8px;
+          margin: 8px auto;
+          border: 1px solid #ccc;
+          border-radius: 4px;
+        }
+      }
+
+      button {
+        padding: 8px 16px;
+        margin: 8px;
+        border: none;
+        border-radius: 4px;
+        background-color: #009646;
+        color: #ffffff;
+        cursor: pointer;
+        font-size: 1.2rem;
+      }
+
+      button.button-small {
+        padding: 4px 8px;
+        font-size: 0.875rem;
+        margin: 4px;
+      }
+
+      a:visited {
+        color: teal;
+      }
+      .hidden {
+        display: none;
+      }
+
+      playing-card {
+        width: 100px;
+      }
+
+      #deck {
+        position: relative;
+        width: 100px;
+        height: 140px;
+        margin: 20px auto;
+      }
+
+      #votes {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(auto, 200px) 1fr minmax(auto, 200px);
+        gap: 16px;
+        align-items: start;
+      }
+
+      .vote-slot {
+        display: contents;
+      }
+
+      .user-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 140px;
+        white-space: normal;
+        word-wrap: break-word;
+      }
+
+      .cards-area {
+        display: flex;
+        justify-content: center;
+        min-height: 140px;
+      }
+
+      .card-container {
+        width: 100px;
+        height: 139px;
+        position: relative;
+        perspective: 1000px;
+      }
+
+      .card-slot {
+        width: 100%;
+        height: 100%;
+        position: absolute;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5),
+          inset 0 0 20px rgba(0, 0, 0, 0.3), inset 0 0 30px rgba(0, 0, 0, 0.2);
+        transform: translateZ(-10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .card-container playing-card {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
+
+      .removeUser {
+        align-self: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <playing-card rank="Queen" suit="Hearts"></playing-card>
+
+      <h1>Scrum Poker</h1>
+      <div id="landing">
+        <button id="newSession">Start New Session</button>
+      </div>
+      <div id="nameInput" class="hidden">
+        <form>
+          <label
+            >Enter your name:
+            <input type="text" id="userName" placeholder="Your name" />
+          </label>
+          <button type="submit" id="joinSession">Join Session</button>
+        </form>
+      </div>
+      <div id="session" class="hidden">
+        <p>Share this URL: <a id="sessionUrl" target="_blank"></a></p>
+        <div id="voteButtons">
+          <button class="vote" data-value="1">1</button>
+          <button class="vote" data-value="2">2</button>
+          <button class="vote" data-value="3">3</button>
+          <button class="vote" data-value="5">5</button>
+          <button class="vote" data-value="8">8</button>
+          <div id="deck">
+            <playing-card rank="0" suit="Hearts"></playing-card>
+          </div>
+        </div>
+        <button id="reveal">Reveal Votes</button>
+        <button id="clearVotes">Clear Votes</button>
+        <button id="hideVotes">Hide Votes</button>
+        <h2>Votes</h2>
+        <div id="votes" class="hidden"></div>
+      </div>
+    </main>
+    <script>
+      let userName = "";
+      let sessionState = { users: {}, votes: {}, votesRevealed: false };
+      let ws;
+      let previousVotes = {};
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get("session");
+
+        if (sessionId) {
+          document.getElementById("landing").classList.add("hidden");
+          document.getElementById("nameInput").classList.remove("hidden");
+          document
+            .getElementById("joinSession")
+            .addEventListener("click", (e) => {
+              e.preventDefault();
+              userName = document.getElementById("userName").value.trim();
+              if (userName) {
+                document.getElementById("nameInput").classList.add("hidden");
+                document.getElementById("session").classList.remove("hidden");
+                document.getElementById("sessionUrl").textContent =
+                  window.location.href;
+                document.getElementById("sessionUrl").href =
+                  window.location.href;
+                initWebSocket(sessionId);
+              }
+            });
+        }
+      });
+
+      document
+        .getElementById("newSession")
+        .addEventListener("click", async () => {
+          const res = await fetch("/new-session");
+          const data = await res.json();
+          window.location.href = `?session=${data.sessionId}`;
+        });
+
+      function updateVotesDisplay() {
+        const votesDiv = document.getElementById("votes");
+        let users = Object.entries(sessionState.users);
+
+        if (sessionState.votesRevealed) {
+          users.sort((a, b) => {
+            const voteA = sessionState.votes[a[0]] || 0;
+            const voteB = sessionState.votes[b[0]] || 0;
+            return voteA - voteB;
+          });
+        }
+
+        votesDiv.innerHTML = users
+          .map(([name, user]) => {
+            const onlineStatus = user.online ? "🟢" : "🔴";
+            const vote = sessionState.votes[name];
+            const voteDisplay = vote
+              ? `<playing-card rank="${
+                  sessionState.votesRevealed ? vote : "0"
+                }" suit="Hearts"></playing-card>`
+              : "";
+            return `
+              <div class="vote-slot" data-user="${name}">
+                <div class="user-info">
+                  <span>${onlineStatus}</span>
+                  <span>${name}</span>
+                </div>
+                <div class="cards-area">
+                  <div class="card-container">
+                    <div class="card-slot"></div>
+                    ${voteDisplay}
+                  </div>
+                </div>
+                <button class="removeUser button-small" data-name="${name}">Remove</button>
+              </div>`;
+          })
+          .join("");
+
+        votesDiv.classList.remove("hidden");
+
+        document.querySelectorAll(".removeUser").forEach((button) => {
+          button.addEventListener("click", () => {
+            ws.send(
+              JSON.stringify({ type: "remove_user", name: button.dataset.name })
+            );
+          });
+        });
+      }
+
+      function removedFromSession() {
+        const votesDiv = document.getElementById("votes");
+        votesDiv.innerHTML = `<h1>You have been removed from the session</h1>`;
+      }
+
+      function initWebSocket(sessionId) {
+        ws = new WebSocket(`ws://${window.location.host}/session/${sessionId}`);
+
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: "join", name: userName }));
+          ws.send(JSON.stringify({ type: "get_state" }));
+        };
+
+        ws.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === "state") {
+            sessionState = message.state;
+            updateVotesDisplay();
+          }
+          if (message.type === "vote") {
+            sessionState.votes[message.name] = message.value;
+            updateVotesDisplay();
+          }
+          if (message.type === "user_removed") {
+            if (message.name === userName) {
+              delete sessionState.users[message.name];
+              delete sessionState.votes[message.name];
+              updateVotesDisplay();
+              ws.close();
+              removedFromSession();
+            }
+          }
+        };
+
+        document.querySelectorAll(".vote").forEach((button) => {
+          button.addEventListener("click", () => {
+            ws.send(
+              JSON.stringify({
+                type: "vote",
+                name: userName,
+                value: button.dataset.value,
+              })
+            );
+          });
+        });
+
+        document.getElementById("reveal").addEventListener("click", () => {
+          ws.send(JSON.stringify({ type: "reveal" }));
+        });
+
+        document.getElementById("clearVotes").addEventListener("click", () => {
+          ws.send(JSON.stringify({ type: "clear_votes" }));
+        });
+
+        document.getElementById("hideVotes").addEventListener("click", () => {
+          ws.send(JSON.stringify({ type: "hide_votes" }));
+        });
+
+        window.addEventListener("beforeunload", () => {
+          ws.send(JSON.stringify({ type: "disconnected", name: userName }));
+        });
+      }
+    </script>
+  </body>
+</html>

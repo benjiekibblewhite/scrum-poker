@@ -1,10 +1,13 @@
 {
   "name": "scrum-poker",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "index.ts",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js",
+    "clean": "rm -rf dist",
+    "copy-static": "mkdir -p dist/public && cp -R public/* dist/public/",
+    "build": "npm run clean && tsc && npm run copy-static",
+    "start": "node index.ts",
     "dev": "nodemon --legacy-watch"
   },
   "author": "",
@@ -15,5 +18,11 @@
     "nodemon": "^3.1.9",
     "ws": "^8.18.1"
   },
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.9",
+    "@types/ws": "^8.18.0",
+    "typescript": "^5.8.2"
+  }
 }
