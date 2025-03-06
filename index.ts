@@ -5,9 +5,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createServer, Server } from "http";
 
-
 interface SessionUser {
   online: boolean;
+  suit: string;
 }
 
 interface SessionState {
@@ -32,13 +32,16 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const BASE_PORT = process.env.PORT || 3000;
-let PORT = typeof BASE_PORT === 'string' ? parseInt(BASE_PORT, 10) : BASE_PORT;
+let PORT = typeof BASE_PORT === "string" ? parseInt(BASE_PORT, 10) : BASE_PORT;
 
 // Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
 // Store sessions in memory
 const sessions: Sessions = {};
+
+// Add available suits constant at the top with other constants
+const SUITS = ["hearts", "diamonds", "clubs", "spades"];
 
 // Create HTTP server with port finding mechanism
 function startServer(port: number): Promise<Server> {
@@ -62,10 +65,21 @@ function startServer(port: number): Promise<Server> {
 }
 
 // Create a new session
-app.get("/new-session", (_req: express.Request, res: express.Response) => {
+app.post("/new-session", (_req: express.Request, res: express.Response) => {
   const sessionId = randomUUID();
-  sessions[sessionId] = { users: {}, votes: {} };
+  sessions[sessionId] = {
+    users: {},
+    votes: {},
+    votesRevealed: false,
+  };
   res.json({ sessionId });
+});
+
+// get session ID from url, like /session/123
+app.get("/session/:id", (req: express.Request, res: express.Response) => {
+  const sessionId = req.params.id;
+  console.log({ sessions, state: sessions[sessionId] });
+  res.json(sessions[sessionId]);
 });
 
 // Start server and initialize WebSocket
@@ -76,6 +90,12 @@ startServer(PORT)
     wss.on("connection", (ws: WebSocket, req: Request) => {
       const sessionId = req.url?.split("/").pop() || "";
       if (!sessionId || !sessions[sessionId]) {
+        ws.send(
+          JSON.stringify({
+            type: "no_session_error",
+            message: "Session not found",
+          })
+        );
         ws.close();
         return;
       }
@@ -83,6 +103,7 @@ startServer(PORT)
       function sendStateUpdate(): void {
         wss.clients.forEach((client) => {
           if (client.readyState === WebSocket.OPEN) {
+            console.log(`NO SESSION MATCHING ID ${sessionId}`);
             client.send(
               JSON.stringify({ type: "state", state: sessions[sessionId] })
             );
@@ -99,8 +120,15 @@ startServer(PORT)
           sendStateUpdate();
         }
 
+        // Update the join handler in the WebSocket connection
         if (message.type === "join" && message.name) {
-          sessions[sessionId].users[message.name] = { online: true };
+          // Randomly assign a suit
+          const suit = SUITS[Math.floor(Math.random() * SUITS.length)];
+
+          sessions[sessionId].users[message.name] = {
+            online: true,
+            suit: suit,
+          };
 
           sendStateUpdate();
         }

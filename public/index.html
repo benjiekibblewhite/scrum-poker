@@ -12,9 +12,23 @@
     <style>
       body {
         font-family: "Poppins", sans-serif;
-        text-align: center;
         background-color: #0b1416;
         color: #ffffff;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 16px;
+        playing-card {
+          width: 50px;
+        }
+        h1 {
+          flex: 1 0 auto;
+          text-align: left;
+        }
       }
 
       a {
@@ -24,11 +38,13 @@
       main {
         padding: 16px;
         margin: 0 auto;
-        max-width: 800px;
+        max-width: 1200px;
+        text-align: center;
       }
 
       label {
         display: block;
+        font-size: 1.5rem;
         input {
           display: block;
           width: 100%;
@@ -41,14 +57,21 @@
       }
 
       button {
-        padding: 8px 16px;
+        padding: 16px 24px;
         margin: 8px;
         border: none;
         border-radius: 4px;
-        background-color: #009646;
+        background-color: #3a7c8c;
         color: #ffffff;
         cursor: pointer;
-        font-size: 1.2rem;
+        font-size: 0.9rem;
+        &:hover {
+          background-color: #4f9db6;
+        }
+        &:disabled {
+          background-color: #666;
+          cursor: not-allowed;
+        }
       }
 
       button.button-small {
@@ -61,11 +84,47 @@
         color: teal;
       }
       .hidden {
-        display: none;
+        display: none !important;
       }
 
       playing-card {
         width: 100px;
+      }
+
+      .landing {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      #voteButtons {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 24px;
+      }
+
+      .vote-button {
+        padding: 0;
+        border: none;
+        background: none;
+        cursor: pointer;
+        width: 65px;
+        height: 90px;
+        transition: transform 0.1s;
+        &:hover {
+          outline: 2px solid #3a7c8c;
+          transform: rotate(2deg) translateY(-2px);
+        }
+        playing-card {
+          width: 65px;
+        }
+      }
+
+      #errors {
+        color: #ff2e2e;
+        margin: 24px 0;
       }
 
       #deck {
@@ -114,7 +173,7 @@
         height: 100%;
         position: absolute;
         background: rgba(255, 255, 255, 0.1);
-        border-radius: 10px;
+        border-radius: 4px;
         box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5),
           inset 0 0 20px rgba(0, 0, 0, 0.3), inset 0 0 30px rgba(0, 0, 0, 0.2);
         transform: translateZ(-10px);
@@ -127,17 +186,67 @@
         left: 0;
       }
 
+      .custom-number {
+        background-color: #ffffff;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border-radius: 4px;
+        position: relative;
+        height: 100%;
+        span {
+          font-size: 2rem;
+        }
+
+        &.hearts,
+        &.diamonds {
+          color: red;
+        }
+        &.clubs,
+        &.spades {
+          color: black;
+        }
+
+        &.custom-hidden {
+          span {
+            display: none;
+          }
+
+          &.hearts,
+          &.diamonds {
+            background-color: red;
+          }
+          &.clubs,
+          &.spades {
+            background-color: black;
+          }
+        }
+      }
+
+      .action-buttons {
+        height: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+
       .removeUser {
         align-self: center;
       }
     </style>
   </head>
   <body>
-    <main>
-      <playing-card rank="Queen" suit="Hearts"></playing-card>
+    <header>
+      <playing-card rank="Queen" suit="Hearts" letters="ABCD"></playing-card>
 
       <h1>Scrum Poker</h1>
-      <div id="landing">
+
+      <button id="shareSession" data-sessionid="" disabled>Copy URL</button>
+    </header>
+    <main>
+      <div id="errors" class="hidden"></div>
+      <div class="landing" id="landing">
+        <playing-card rank="Ace" suit="Spades"></playing-card>
         <button id="newSession">Start New Session</button>
       </div>
       <div id="nameInput" class="hidden">
@@ -150,16 +259,38 @@
         </form>
       </div>
       <div id="session" class="hidden">
-        <p>Share this URL: <a id="sessionUrl" target="_blank"></a></p>
         <div id="voteButtons">
-          <button class="vote" data-value="1">1</button>
-          <button class="vote" data-value="2">2</button>
-          <button class="vote" data-value="3">3</button>
-          <button class="vote" data-value="5">5</button>
-          <button class="vote" data-value="8">8</button>
-          <div id="deck">
-            <playing-card rank="0" suit="Hearts"></playing-card>
-          </div>
+          <!-- use playing cards for buttons -->
+          <button class="vote-button" data-value="1">
+            <playing-card rank="1" suit="hearts"></playing-card>
+          </button>
+          <button class="vote-button" data-value="2">
+            <playing-card rank="2" suit="clubs"></playing-card>
+          </button>
+          <button class="vote-button" data-value="3">
+            <playing-card rank="3" suit="diamonds"></playing-card>
+          </button>
+          <button class="vote-button" data-value="5">
+            <playing-card rank="5" suit="spades"></playing-card>
+          </button>
+          <button class="vote-button" data-value="8">
+            <playing-card rank="8" suit="hearts"></playing-card>
+          </button>
+          <button class="vote-button" data-value="13">
+            <div class="custom-number hearts"><span>13</span></div>
+          </button>
+          <button class="vote-button" data-value="21">
+            <div class="custom-number clubs"><span>21</span></div>
+          </button>
+          <button class="vote-button" data-value="34">
+            <div class="custom-number diamonds"><span>34</span></div>
+          </button>
+          <button class="vote-button" data-value="100">
+            <div class="custom-number spades"><span>100</span></div>
+          </button>
+          <button class="vote-button" data-value="?">
+            <div class="custom-number hearts"><span>?</span></div>
+          </button>
         </div>
         <button id="reveal">Reveal Votes</button>
         <button id="clearVotes">Clear Votes</button>
@@ -174,35 +305,77 @@
       let ws;
       let previousVotes = {};
 
-      document.addEventListener("DOMContentLoaded", () => {
+      function showError(error, hideUI) {
+        const errorsDiv = document.getElementById("errors");
+        errorsDiv.textContent = error;
+        errorsDiv.classList.remove("hidden");
+        if (hideUI) {
+          document.querySelector(".landing").classList.remove("hidden");
+          document.getElementById("session").classList.add("hidden");
+        }
+      }
+
+      async function getSession(sessionId) {
+        const res = await fetch(`/session/${sessionId}`);
+        console.log({ res });
+        return res.json();
+      }
+
+      function enableShareButton(sessionId) {
+        const shareButton = document.getElementById("shareSession");
+        shareButton.disabled = false;
+        shareButton.addEventListener("click", () => {
+          navigator.clipboard.writeText(window.location.href);
+          // show a tooltip
+          shareButton.textContent = "Copied!";
+          setTimeout(() => {
+            shareButton.textContent = "Copy URL";
+          }, 2000);
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", async () => {
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get("session");
+        try {
+          if (sessionId) {
+            const sessionState = await getSession(sessionId);
+            enableShareButton(sessionId);
+            if (!sessionState) {
+              showError("Session not found", true);
+              return;
+            }
+            document.getElementById("landing").classList.add("hidden");
+            document.getElementById("nameInput").classList.remove("hidden");
+            document
+              .getElementById("joinSession")
+              .addEventListener("click", (e) => {
+                e.preventDefault();
+                userName = document.getElementById("userName").value.trim();
+                if (userName) {
+                  document.getElementById("landing").classList.add("hidden");
+                  document.getElementById("nameInput").classList.add("hidden");
+                  document.getElementById("session").classList.remove("hidden");
 
-        if (sessionId) {
-          document.getElementById("landing").classList.add("hidden");
-          document.getElementById("nameInput").classList.remove("hidden");
-          document
-            .getElementById("joinSession")
-            .addEventListener("click", (e) => {
-              e.preventDefault();
-              userName = document.getElementById("userName").value.trim();
-              if (userName) {
-                document.getElementById("nameInput").classList.add("hidden");
-                document.getElementById("session").classList.remove("hidden");
-                document.getElementById("sessionUrl").textContent =
-                  window.location.href;
-                document.getElementById("sessionUrl").href =
-                  window.location.href;
-                initWebSocket(sessionId);
-              }
-            });
+                  initWebSocket(sessionId);
+                }
+              });
+          }
+        } catch (error) {
+          console.error(error);
+          showError("Session not found", true);
         }
       });
 
       document
         .getElementById("newSession")
         .addEventListener("click", async () => {
-          const res = await fetch("/new-session");
+          const res = await fetch("/new-session", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
           const data = await res.json();
           window.location.href = `?session=${data.sessionId}`;
         });
@@ -219,15 +392,29 @@
           });
         }
 
+        function getVoteDisplay(revealed, vote, suit) {
+          if (!vote) return "";
+          if (vote === "?" || Number(vote) > 10) {
+            if (!revealed)
+              return `<playing-card rank="0" suit="hearts"></playing-card>`;
+            return `<div class="custom-number ${
+              revealed ? "" : "custom-hidden"
+            } ${suit}"><span>${vote}</span></div>`;
+          }
+          return `<playing-card rank="${revealed ? vote : "0"}" suit="${
+            suit || "hearts"
+          }"></playing-card>`;
+        }
+
         votesDiv.innerHTML = users
           .map(([name, user]) => {
             const onlineStatus = user.online ? "🟢" : "🔴";
             const vote = sessionState.votes[name];
-            const voteDisplay = vote
-              ? `<playing-card rank="${
-                  sessionState.votesRevealed ? vote : "0"
-                }" suit="Hearts"></playing-card>`
-              : "";
+            const voteDisplay = getVoteDisplay(
+              sessionState.votesRevealed,
+              vote,
+              user.suit
+            );
             return `
               <div class="vote-slot" data-user="${name}">
                 <div class="user-info">
@@ -240,7 +427,9 @@
                     ${voteDisplay}
                   </div>
                 </div>
-                <button class="removeUser button-small" data-name="${name}">Remove</button>
+                <div class="action-buttons">
+                  <button class="removeUser button-small" data-name="${name}">Remove</button>
+                </div>
               </div>`;
           })
           .join("");
@@ -249,6 +438,7 @@
 
         document.querySelectorAll(".removeUser").forEach((button) => {
           button.addEventListener("click", () => {
+            confirm("Are you sure you want to remove this user?");
             ws.send(
               JSON.stringify({ type: "remove_user", name: button.dataset.name })
             );
@@ -257,8 +447,28 @@
       }
 
       function removedFromSession() {
-        const votesDiv = document.getElementById("votes");
-        votesDiv.innerHTML = `<h1>You have been removed from the session</h1>`;
+        const sessionDiv = document.getElementById("session");
+        const votingUI = sessionDiv.querySelector("#voteButtons");
+        const actionButtons = sessionDiv.querySelectorAll(
+          "#reveal, #clearVotes, #hideVotes"
+        );
+
+        // Hide voting UI
+        votingUI.classList.add("hidden");
+        actionButtons.forEach((button) => button.classList.add("hidden"));
+
+        // Show removal message
+        showError("You have been removed from the session");
+        document.getElementById("session").classList.add("hidden");
+        document.getElementById("landing").classList.remove("hidden");
+
+        document
+          .getElementById("startNewSession")
+          .addEventListener("click", async () => {
+            const res = await fetch("/new-session");
+            const data = await res.json();
+            window.location.href = `?session=${data.sessionId}`;
+          });
       }
 
       function initWebSocket(sessionId) {
@@ -288,9 +498,12 @@
               removedFromSession();
             }
           }
+          if (message.type === "no_session_error") {
+            showError("Session not found", true);
+          }
         };
 
-        document.querySelectorAll(".vote").forEach((button) => {
+        document.querySelectorAll(".vote-button").forEach((button) => {
           button.addEventListener("click", () => {
             ws.send(
               JSON.stringify({
