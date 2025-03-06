@@ -324,7 +324,6 @@
 
       async function getSession(sessionId) {
         const res = await fetch(`/session/${sessionId}`);
-        console.log({ res });
         return res.json();
       }
 
@@ -484,7 +483,11 @@
       }
 
       function initWebSocket(sessionId) {
-        ws = new WebSocket(`ws://${window.location.host}/session/${sessionId}`);
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+
+        ws = new WebSocket(
+          `${protocol}://${window.location.host}/session/${sessionId}`
+        );
 
         ws.onopen = () => {
           ws.send(JSON.stringify({ type: "join", name: userName }));
