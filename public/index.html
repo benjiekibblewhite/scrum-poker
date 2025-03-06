@@ -21,13 +21,14 @@
         align-items: center;
         justify-content: center;
         gap: 16px;
-        padding: 16px;
+        padding: 4px 16px;
         playing-card {
-          width: 50px;
+          width: 35px;
         }
         h1 {
           flex: 1 0 auto;
           text-align: left;
+          margin: 0;
         }
       }
 
@@ -88,13 +89,16 @@
       }
 
       playing-card {
-        width: 100px;
+        width: 100%;
       }
 
       .landing {
         display: flex;
         flex-direction: column;
         align-items: center;
+        playing-card {
+          width: 100px;
+        }
       }
 
       #voteButtons {
@@ -147,23 +151,26 @@
       }
 
       .user-info {
+        height: 100%;
         display: flex;
         align-items: center;
         gap: 8px;
-        min-height: 140px;
         white-space: normal;
         word-wrap: break-word;
+        span {
+          width: 100%;
+        }
       }
 
       .cards-area {
         display: flex;
         justify-content: center;
-        min-height: 140px;
+        align-items: center;
       }
 
       .card-container {
-        width: 100px;
-        height: 139px;
+        height: 120px;
+        aspect-ratio: 1/1.4;
         position: relative;
         perspective: 1000px;
       }
@@ -292,9 +299,9 @@
             <div class="custom-number hearts"><span>?</span></div>
           </button>
         </div>
-        <button id="reveal">Reveal Votes</button>
-        <button id="clearVotes">Clear Votes</button>
-        <button id="hideVotes">Hide Votes</button>
+        <button id="reveal" class="button-small">Reveal Votes</button>
+        <button id="clearVotes" class="button-small">Clear Votes</button>
+        <button id="hideVotes" class="button-small">Hide Votes</button>
         <h2>Votes</h2>
         <div id="votes" class="hidden"></div>
       </div>
