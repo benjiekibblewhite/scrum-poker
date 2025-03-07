@@ -486,7 +486,7 @@
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
         ws = new WebSocket(
-          `${protocol}://${window.location.host}/session/${sessionId}`
+          `${protocol}//${window.location.host}/session/${sessionId}`
         );
 
         ws.onopen = () => {
