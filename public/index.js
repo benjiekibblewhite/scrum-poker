@@ -2,6 +2,7 @@
  * STATE
  */
 let userName = "";
+let lastVotesRevealed = false;
 
 // Creates a reactive state object that triggers a callback when properties change
 const createReactiveState = (initialState, onChange) => {
@@ -96,12 +97,38 @@ function updateVotesDisplay() {
   const votesDiv = document.getElementById("votes");
   let users = Object.entries(sessionState.users);
 
+  // Check if votes are being revealed (transition from hidden to revealed)
+  const isRevealing = !lastVotesRevealed && sessionState.votesRevealed;
+  lastVotesRevealed = sessionState.votesRevealed;
+
   if (sessionState.votesRevealed) {
     users.sort((a, b) => {
       const voteA = sessionState.votes[a[0]] || 0;
       const voteB = sessionState.votes[b[0]] || 0;
       return voteA - voteB;
     });
+
+    // Only check for matching votes when actually revealing
+    if (isRevealing) {
+      const votes = Object.values(sessionState.votes).filter(
+        (vote) => vote && vote !== "?"
+      );
+      if (votes.length > 1) {
+        const allMatch = votes.every((vote) => vote === votes[0]);
+        if (allMatch && confetti) {
+          confetti({
+            particleCount: 400,
+            spread: 100,
+            origin: { y: 0.6 },
+            colors: ["#FFB3BA", "#BAFFC9", "#BAE1FF"],
+            shapes: ["circle", "square"],
+            ticks: 300, // how long the confetti will fall
+            gravity: 0.8, // affects how fast they fall
+            scalar: 1.2, // makes the confetti pieces bigger
+          });
+        }
+      }
+    }
   }
 
   votesDiv.innerHTML = users
