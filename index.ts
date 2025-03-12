@@ -78,7 +78,6 @@ app.post("/new-session", (_req: express.Request, res: express.Response) => {
 // get session ID from url, like /session/123
 app.get("/session/:id", (req: express.Request, res: express.Response) => {
   const sessionId = req.params.id;
-  console.log({ sessions, state: sessions[sessionId] });
   res.json(sessions[sessionId]);
 });
 
@@ -159,7 +158,6 @@ startServer(PORT)
         }
 
         if (message.type === "disconnected" && message.name) {
-          console.log("🦄", "hey");
           sessions[sessionId].users[message.name].online = false;
 
           sendStateUpdate();
