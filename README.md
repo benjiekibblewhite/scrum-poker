@@ -17,12 +17,12 @@ graph TD
 
   - Pure HTML and JavaScript
   - WebSocket client for real-time updates
+  - Proxy object for reactive updates when state changes
 
 - **Backend (Node.js Server)**:
   - Express.js web server for static file serving
   - WebSocket server for real-time communication
   - In-memory session storage with UUID-based keys
-  - Tracks user presence (online/offline)
   - Maintains vote state (hidden/revealed)
   - Cleans up inactive sessions automatically
   - Handles user joins/disconnects and vote updates
