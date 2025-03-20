@@ -8,6 +8,7 @@ import { createServer, Server } from "http";
 interface SessionUser {
   online: boolean;
   suit: string;
+  socket?: WebSocket;
 }
 
 interface SessionState {
@@ -100,87 +101,162 @@ startServer(PORT)
       }
 
       function sendStateUpdate(): void {
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            console.log(`NO SESSION MATCHING ID ${sessionId}`);
-            client.send(
-              JSON.stringify({ type: "state", state: sessions[sessionId] })
+        Object.values(sessions[sessionId].users).forEach((user) => {
+          if (user.socket?.readyState === WebSocket.OPEN) {
+            user.socket.send(
+              JSON.stringify({
+                type: "state",
+                state: sessions[sessionId],
+              })
             );
           }
         });
       }
 
       ws.on("message", (data: WebSocket.RawData) => {
-        const message: WSMessage = JSON.parse(data.toString());
-        console.log("✉️", message);
-        console.log("🗳️", sessions[sessionId]);
+        try {
+          const message: WSMessage = JSON.parse(data.toString());
+          console.log("✉️", message);
+          console.log("🗳️", sessions[sessionId]);
 
-        if (message.type === "get_state") {
-          sendStateUpdate();
-        }
+          if (message.type === "get_state") {
+            sendStateUpdate();
+          }
 
-        // Update the join handler in the WebSocket connection
-        if (message.type === "join" && message.name) {
-          // Randomly assign a suit
-          const suit = SUITS[Math.floor(Math.random() * SUITS.length)];
-
-          sessions[sessionId].users[message.name] = {
-            online: true,
-            suit: suit,
-          };
-
-          sendStateUpdate();
-        }
-
-        if (message.type === "vote" && message.name) {
-          sessions[sessionId].votes[message.name] = message.value || "";
-
-          sendStateUpdate();
-        }
-
-        if (message.type === "reveal") {
-          sessions[sessionId].votesRevealed = true;
-
-          sendStateUpdate();
-        }
-
-        if (message.type === "clear_votes") {
-          sessions[sessionId].votes = {}; // Clear votes
-          sessions[sessionId].votesRevealed = false; // Hide votes
-
-          sendStateUpdate();
-        }
-
-        if (message.type === "hide_votes") {
-          sessions[sessionId].votesRevealed = false; // Hide votes
-
-          sendStateUpdate();
-        }
-
-        if (message.type === "disconnected" && message.name) {
-          sessions[sessionId].users[message.name].online = false;
-
-          sendStateUpdate();
-        }
-
-        if (message.type === "remove_user" && message.name) {
-          delete sessions[sessionId].users[message.name];
-          delete sessions[sessionId].votes[message.name];
-
-          wss.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(
-                JSON.stringify({ type: "user_removed", name: message.name })
+          if (message.type === "join" && message.name) {
+            try {
+              const suit = SUITS[Math.floor(Math.random() * SUITS.length)];
+              sessions[sessionId].users[message.name] = {
+                online: true,
+                suit: suit,
+                socket: ws,
+              };
+              sendStateUpdate();
+            } catch (error) {
+              console.error(
+                `Error handling join for user ${message.name} in session ${sessionId}:`,
+                error
               );
             }
-          });
-          sendStateUpdate();
+          }
+
+          if (message.type === "vote" && message.name) {
+            try {
+              sessions[sessionId].votes[message.name] = message.value || "";
+              sendStateUpdate();
+            } catch (error) {
+              console.error(
+                `Error handling vote for user ${message.name} in session ${sessionId}:`,
+                error
+              );
+            }
+          }
+
+          if (message.type === "reveal") {
+            try {
+              sessions[sessionId].votesRevealed = true;
+              sendStateUpdate();
+            } catch (error) {
+              console.error(
+                `Error handling reveal in session ${sessionId}:`,
+                error
+              );
+            }
+          }
+
+          if (message.type === "clear_votes") {
+            try {
+              sessions[sessionId].votes = {};
+              sessions[sessionId].votesRevealed = false;
+              sendStateUpdate();
+            } catch (error) {
+              console.error(
+                `Error handling clear_votes in session ${sessionId}:`,
+                error
+              );
+            }
+          }
+
+          if (message.type === "hide_votes") {
+            try {
+              sessions[sessionId].votesRevealed = false;
+              sendStateUpdate();
+            } catch (error) {
+              console.error(
+                `Error handling hide_votes in session ${sessionId}:`,
+                error
+              );
+            }
+          }
+
+          if (message.type === "disconnected" && message.name) {
+            try {
+              if (sessions[sessionId].users[message.name]) {
+                sessions[sessionId].users[message.name].online = false;
+                sendStateUpdate();
+              }
+            } catch (error) {
+              console.error(
+                `Error handling disconnect event for session ${sessionId}:`,
+                error
+              );
+            }
+          }
+
+          if (message.type === "remove_user" && message.name) {
+            try {
+              // First notify all users including the one being removed
+              Object.values(sessions[sessionId].users).forEach((user) => {
+                if (user.socket?.readyState === WebSocket.OPEN) {
+                  console.log("Sending User Removed to User");
+                  user.socket.send(
+                    JSON.stringify({ type: "user_removed", name: message.name })
+                  );
+                }
+              });
+
+              // Then delete the user data
+              delete sessions[sessionId].users[message.name];
+              delete sessions[sessionId].votes[message.name];
+
+              // Finally send state update to remaining users
+              sendStateUpdate();
+            } catch (error) {
+              console.error(
+                `Error removing user ${message.name} for session ${sessionId}:`,
+                error
+              );
+            }
+          }
+        } catch (error) {
+          console.error(
+            `Error parsing message in session ${sessionId}:`,
+            error
+          );
         }
       });
 
       ws.on("close", () => {
-        if (Object.keys(sessions[sessionId].votes).length === 0) {
-          delete sessions[sessionId];
+        try {
+          // Find and remove the disconnected user
+          const disconnectedUser = Object.entries(
+            sessions[sessionId].users
+          ).find(([_, user]) => user.socket === ws);
+
+          if (disconnectedUser) {
+            const [userName] = disconnectedUser;
+            delete sessions[sessionId].users[userName];
+
+            // Clean up empty sessions
+            if (Object.keys(sessions[sessionId].users).length === 0) {
+              delete sessions[sessionId];
+            }
+          }
+        } catch (error) {
+          console.error(
+            `Error handling WebSocket close for session ${sessionId}:`,
+            error
+          );
         }
       });
     });

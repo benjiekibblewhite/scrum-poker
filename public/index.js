@@ -3,6 +3,7 @@
  */
 let userName = "";
 let lastVotesRevealed = false;
+let ws;
 
 // Creates a reactive state object that triggers a callback when properties change
 const createReactiveState = (initialState, onChange) => {
@@ -177,7 +178,6 @@ function updateVotesDisplay() {
 }
 
 function initWebSocket(sessionId) {
-  let ws;
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 
   ws = new WebSocket(
