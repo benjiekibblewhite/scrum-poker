@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrum Poker - Itty Sockets Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 15px; margin: 5px; }
+        .log { background: #f5f5f5; padding: 10px; height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>🦄 Scrum Poker - Itty Sockets Integration Test</h1>
+    
+    <div class="test-section">
+        <h3>Connection Test</h3>
+        <button onclick="testConnection()">Test Connection</button>
+        <button onclick="testJoin()">Test Join</button>
+        <button onclick="testVote()">Test Vote</button>
+        <button onclick="testReveal()">Test Reveal</button>
+    </div>
+    
+    <div class="test-section">
+        <h3>Log</h3>
+        <div id="log" class="log"></div>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+
+    <script>
+        let channel = null;
+        let testSessionId = 'test-session-' + Math.random().toString(36).substring(2, 8);
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log("🦄", message);
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+        
+        // Itty-sockets client - simplified implementation
+        function connect(channelName, options = {}) {
+          let ws = null;
+          let isConnecting = false;
+          let messageQueue = [];
+          let eventHandlers = {};
+          
+          function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            
+            const url = `wss://ittysockets.io/c/${channelName}?${new URLSearchParams(options)}`;
+            log(`Connecting to: ${url}`);
+            ws = new WebSocket(url);
+            
+            ws.onopen = () => {
+              log("✅ Connected to itty-sockets");
+              isConnecting = false;
+              // Send queued messages
+              while (messageQueue.length > 0) {
+                const message = messageQueue.shift();
+                ws.send(message);
+              }
+              // Trigger open handlers
+              if (eventHandlers.open) {
+                eventHandlers.open.forEach(handler => handler());
+              }
+            };
+            
+            ws.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                log(`📨 Received: ${JSON.stringify(data)}`);
+                const messageEvent = {
+                  message: data.message,
+                  date: data.date ? new Date(data.date) : new Date(),
+                  id: data.id,
+                  uid: data.uid,
+                  alias: data.alias
+                };
+                
+                // Trigger message handlers
+                if (eventHandlers.message) {
+                  eventHandlers.message.forEach(handler => handler(messageEvent));
+                }
+                
+                // Trigger specific type handlers
+                if (data.message && data.message.type && eventHandlers[data.message.type]) {
+                  eventHandlers[data.message.type].forEach(handler => handler(messageEvent));
+                }
+              } catch (error) {
+                log(`❌ Error parsing message: ${error.message}`);
+              }
+            };
+            
+            ws.onclose = () => {
+              log("🔌 Disconnected from itty-sockets");
+              ws = null;
+              isConnecting = false;
+              if (eventHandlers.close) {
+                eventHandlers.close.forEach(handler => handler());
+              }
+            };
+            
+            ws.onerror = (error) => {
+              log(`❌ WebSocket error: ${error}`);
+            };
+          }
+          
+          return {
+            send: (message, recipientUid = null) => {
+              const payload = JSON.stringify(message);
+              const finalPayload = recipientUid ? `@@${recipientUid}@@${payload}` : payload;
+              log(`📤 Sending: ${payload}`);
+              
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(finalPayload);
+              } else {
+                messageQueue.push(finalPayload);
+                if (!isConnecting) {
+                  isConnecting = true;
+                  connectWebSocket();
+                }
+              }
+              return this;
+            },
+            
+            on: (eventType, handler) => {
+              if (!eventHandlers[eventType]) {
+                eventHandlers[eventType] = [];
+              }
+              eventHandlers[eventType].push(handler);
+              return this;
+            },
+            
+            open: () => {
+              connectWebSocket();
+              return this;
+            },
+            
+            close: () => {
+              if (ws) {
+                ws.close();
+              }
+              return this;
+            }
+          };
+        }
+        
+        function testConnection() {
+            log(`Testing connection to session: ${testSessionId}`);
+            channel = connect(`scrum-poker-${testSessionId}`, { alias: 'test-user' });
+            
+            channel.on('open', () => {
+                log('✅ Channel opened successfully');
+            });
+            
+            channel.on('message', (event) => {
+                log(`📨 Message received: ${JSON.stringify(event.message)}`);
+            });
+            
+            channel.on('close', () => {
+                log('🔌 Channel closed');
+            });
+        }
+        
+        function testJoin() {
+            if (!channel) {
+                log('❌ Please test connection first');
+                return;
+            }
+            
+            channel.send({
+                type: "join",
+                name: "Test User",
+                suit: "hearts"
+            });
+        }
+        
+        function testVote() {
+            if (!channel) {
+                log('❌ Please test connection first');
+                return;
+            }
+            
+            channel.send({
+                type: "vote",
+                name: "Test User",
+                value: "5"
+            });
+        }
+        
+        function testReveal() {
+            if (!channel) {
+                log('❌ Please test connection first');
+                return;
+            }
+            
+            channel.send({
+                type: "reveal"
+            });
+        }
+        
+        // Auto-start connection test
+        window.onload = () => {
+            log('🚀 Test page loaded');
+            log(`Session ID: ${testSessionId}`);
+        };
+    </script>
+</body>
+</html>
