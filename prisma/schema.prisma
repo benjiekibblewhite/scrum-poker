@@ -1,0 +1,41 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+  votes       Vote[]
+  votesRevealed Boolean @default(false)
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  suit      String   @default("hearts")
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId String
+  votes     Vote[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, sessionId])
+}
+
+model Vote {
+  id        String   @id @default(uuid())
+  value     String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sessionId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

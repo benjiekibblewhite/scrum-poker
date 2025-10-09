@@ -9,7 +9,10 @@
     "build": "npm i && npm run clean && tsc && npm run copy-static",
     "start": "node index.ts",
     "dev": "nodemon --legacy-watch",
-    "serve": "node dist/index.js"
+    "serve": "node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio"
   },
   "author": "",
   "license": "ISC",
@@ -17,13 +20,16 @@
   "dependencies": {
     "express": "^4.21.2",
     "nodemon": "^3.1.9",
-    "ws": "^8.18.1"
+    "ws": "^8.18.1",
+    "@prisma/client": "^5.7.0",
+    "pg": "^8.11.3"
   },
   "type": "module",
   "devDependencies": {
     "@types/express": "^5.0.0",
     "@types/node": "^22.13.9",
     "@types/ws": "^8.18.0",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "prisma": "^5.7.0"
   }
 }

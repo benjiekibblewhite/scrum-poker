@@ -1,32 +1,32 @@
 import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
-import { randomUUID } from "crypto";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createServer, Server } from "http";
+import prisma from "./prisma-client.ts";
 
 interface SessionUser {
   online: boolean;
   suit: string;
   socket?: WebSocket;
-}
-
-interface SessionState {
-  users: { [key: string]: SessionUser };
-  votes: { [key: string]: string };
-  votesRevealed?: boolean;
-}
-
-interface Sessions {
-  [key: string]: SessionState;
+  id: string;
 }
 
 interface WSMessage {
   type: string;
   name?: string;
   value?: string;
-  state?: SessionState;
+  state?: any;
 }
+
+// Store active WebSocket connections
+const activeConnections: {
+  [socketId: string]: {
+    socket: WebSocket;
+    userId?: string;
+    sessionId?: string;
+  };
+} = {};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,10 +38,7 @@ let PORT = typeof BASE_PORT === "string" ? parseInt(BASE_PORT, 10) : BASE_PORT;
 // Serve static files
 app.use(express.static(path.join(__dirname, "public")));
 
-// Store sessions in memory
-const sessions: Sessions = {};
-
-// Add available suits constant at the top with other constants
+// Add available suits constant
 const SUITS = ["hearts", "diamonds", "clubs", "spades"];
 
 // Create HTTP server with port finding mechanism
@@ -65,21 +62,77 @@ function startServer(port: number): Promise<Server> {
   });
 }
 
-// Create a new session
-app.post("/new-session", (_req: express.Request, res: express.Response) => {
-  const sessionId = randomUUID();
-  sessions[sessionId] = {
-    users: {},
-    votes: {},
-    votesRevealed: false,
+// Format session state for the client
+async function formatSessionState(sessionId: string) {
+  const session = await prisma.session.findUnique({
+    where: { id: sessionId },
+    include: {
+      users: true,
+      votes: true,
+    },
+  });
+
+  if (!session) return null;
+
+  const users: { [key: string]: { suit: string; online: boolean } } = {};
+  const votes: { [key: string]: string } = {};
+
+  // Process users and their votes
+  session.users.forEach((user) => {
+    users[user.name] = {
+      suit: user.suit,
+      online: true, // Always true for DB users
+    };
+  });
+
+  // Process votes
+  session.votes.forEach((vote) => {
+    const user = session.users.find((u) => u.id === vote.userId);
+    if (user) {
+      votes[user.name] = vote.value || "";
+    }
+  });
+
+  return {
+    users,
+    votes,
+    votesRevealed: session.votesRevealed,
   };
-  res.json({ sessionId });
-});
+}
+
+// Create a new session
+app.post(
+  "/new-session",
+  async (_req: express.Request, res: express.Response) => {
+    try {
+      const session = await prisma.session.create({
+        data: {
+          votesRevealed: false,
+        },
+      });
+      res.json({ sessionId: session.id });
+    } catch (error) {
+      console.error("Error creating session:", error);
+      res.status(500).json({ error: "Failed to create session" });
+    }
+  }
+);
 
 // get session ID from url, like /session/123
-app.get("/session/:id", (req: express.Request, res: express.Response) => {
-  const sessionId = req.params.id;
-  res.json(sessions[sessionId]);
+app.get("/session/:id", async (req: express.Request, res: express.Response) => {
+  try {
+    const sessionId = req.params.id;
+    const formattedState = await formatSessionState(sessionId);
+
+    if (!formattedState) {
+      return res.status(404).json({ error: "Session not found" });
+    }
+
+    res.json(formattedState);
+  } catch (error) {
+    console.error("Error fetching session:", error);
+    res.status(500).json({ error: "Failed to fetch session" });
+  }
 });
 
 // Start server and initialize WebSocket
@@ -87,9 +140,13 @@ startServer(PORT)
   .then((server) => {
     const wss = new WebSocketServer({ server });
 
-    wss.on("connection", (ws: WebSocket, req: Request) => {
+    wss.on("connection", (ws: WebSocket, req: any) => {
+      // Generate a unique ID for this connection
+      const socketId = Math.random().toString(36).substring(2, 15);
+      activeConnections[socketId] = { socket: ws };
+
       const sessionId = req.url?.split("/").pop() || "";
-      if (!sessionId || !sessions[sessionId]) {
+      if (!sessionId) {
         ws.send(
           JSON.stringify({
             type: "no_session_error",
@@ -100,170 +157,275 @@ startServer(PORT)
         return;
       }
 
-      function sendStateUpdate(): void {
-        Object.values(sessions[sessionId].users).forEach((user) => {
-          if (user.socket?.readyState === WebSocket.OPEN) {
-            user.socket.send(
+      // Verify the session exists
+      prisma.session
+        .findUnique({ where: { id: sessionId } })
+        .then((session) => {
+          if (!session) {
+            ws.send(
               JSON.stringify({
-                type: "state",
-                state: sessions[sessionId],
+                type: "no_session_error",
+                message: "Session not found",
               })
             );
-          }
-        });
-      }
-
-      ws.on("message", (data: WebSocket.RawData) => {
-        try {
-          const message: WSMessage = JSON.parse(data.toString());
-          console.log("✉️", message);
-          console.log("🗳️", sessions[sessionId]);
-
-          if (message.type === "get_state") {
-            sendStateUpdate();
+            ws.close();
+            return;
           }
 
-          if (message.type === "join" && message.name) {
+          // Save the sessionId with this connection
+          activeConnections[socketId].sessionId = sessionId;
+
+          // Set up message handling
+          async function sendStateUpdate() {
+            const formattedState = await formatSessionState(sessionId);
+
+            // Send state update to all clients in this session
+            Object.values(activeConnections).forEach((conn) => {
+              if (
+                conn.sessionId === sessionId &&
+                conn.socket.readyState === WebSocket.OPEN
+              ) {
+                conn.socket.send(
+                  JSON.stringify({
+                    type: "state",
+                    state: formattedState,
+                  })
+                );
+              }
+            });
+          }
+
+          ws.on("message", async (data: WebSocket.RawData) => {
             try {
-              const suit = SUITS[Math.floor(Math.random() * SUITS.length)];
-              sessions[sessionId].users[message.name] = {
-                online: true,
-                suit: suit,
-                socket: ws,
-              };
-              sendStateUpdate();
-            } catch (error) {
-              console.error(
-                `Error handling join for user ${message.name} in session ${sessionId}:`,
-                error
-              );
-            }
-          }
+              const message: WSMessage = JSON.parse(data.toString());
+              console.log("✉️", message);
 
-          if (message.type === "vote" && message.name) {
-            try {
-              sessions[sessionId].votes[message.name] = message.value || "";
-              sendStateUpdate();
-            } catch (error) {
-              console.error(
-                `Error handling vote for user ${message.name} in session ${sessionId}:`,
-                error
-              );
-            }
-          }
+              if (message.type === "get_state") {
+                await sendStateUpdate();
+              }
 
-          if (message.type === "reveal") {
-            try {
-              sessions[sessionId].votesRevealed = true;
-              sendStateUpdate();
-            } catch (error) {
-              console.error(
-                `Error handling reveal in session ${sessionId}:`,
-                error
-              );
-            }
-          }
+              if (message.type === "join" && message.name) {
+                try {
+                  // Check if user already exists in this session
+                  const existingUser = await prisma.user.findFirst({
+                    where: {
+                      name: message.name,
+                      sessionId: sessionId,
+                    },
+                  });
 
-          if (message.type === "clear_votes") {
-            try {
-              sessions[sessionId].votes = {};
-              sessions[sessionId].votesRevealed = false;
-              sendStateUpdate();
-            } catch (error) {
-              console.error(
-                `Error handling clear_votes in session ${sessionId}:`,
-                error
-              );
-            }
-          }
+                  let userId;
 
-          if (message.type === "hide_votes") {
-            try {
-              sessions[sessionId].votesRevealed = false;
-              sendStateUpdate();
-            } catch (error) {
-              console.error(
-                `Error handling hide_votes in session ${sessionId}:`,
-                error
-              );
-            }
-          }
+                  if (existingUser) {
+                    userId = existingUser.id;
+                  } else {
+                    // Create new user
+                    const suit =
+                      SUITS[Math.floor(Math.random() * SUITS.length)];
+                    const user = await prisma.user.create({
+                      data: {
+                        name: message.name,
+                        suit,
+                        session: { connect: { id: sessionId } },
+                      },
+                    });
+                    userId = user.id;
+                  }
 
-          if (message.type === "disconnected" && message.name) {
-            try {
-              if (sessions[sessionId].users[message.name]) {
-                sessions[sessionId].users[message.name].online = false;
-                sendStateUpdate();
+                  // Store user ID with this connection
+                  activeConnections[socketId].userId = userId;
+
+                  await sendStateUpdate();
+                } catch (error) {
+                  console.error(
+                    `Error handling join for user ${message.name} in session ${sessionId}:`,
+                    error
+                  );
+                }
+              }
+
+              if (message.type === "vote" && message.name) {
+                try {
+                  // Find the user
+                  const user = await prisma.user.findFirst({
+                    where: {
+                      name: message.name,
+                      sessionId,
+                    },
+                  });
+
+                  if (user) {
+                    // Check if vote exists
+                    const existingVote = await prisma.vote.findFirst({
+                      where: {
+                        userId: user.id,
+                        sessionId,
+                      },
+                    });
+
+                    // Update or create vote
+                    if (existingVote) {
+                      await prisma.vote.update({
+                        where: { id: existingVote.id },
+                        data: { value: message.value || "" },
+                      });
+                    } else {
+                      await prisma.vote.create({
+                        data: {
+                          value: message.value || "",
+                          user: { connect: { id: user.id } },
+                          session: { connect: { id: sessionId } },
+                        },
+                      });
+                    }
+
+                    await sendStateUpdate();
+                  }
+                } catch (error) {
+                  console.error(
+                    `Error handling vote for user ${message.name} in session ${sessionId}:`,
+                    error
+                  );
+                }
+              }
+
+              if (message.type === "reveal") {
+                try {
+                  await prisma.session.update({
+                    where: { id: sessionId },
+                    data: { votesRevealed: true },
+                  });
+                  await sendStateUpdate();
+                } catch (error) {
+                  console.error(
+                    `Error handling reveal in session ${sessionId}:`,
+                    error
+                  );
+                }
+              }
+
+              if (message.type === "clear_votes") {
+                try {
+                  // Delete all votes for this session
+                  await prisma.vote.deleteMany({
+                    where: { sessionId },
+                  });
+
+                  // Reset votes revealed flag
+                  await prisma.session.update({
+                    where: { id: sessionId },
+                    data: { votesRevealed: false },
+                  });
+
+                  await sendStateUpdate();
+                } catch (error) {
+                  console.error(
+                    `Error handling clear_votes in session ${sessionId}:`,
+                    error
+                  );
+                }
+              }
+
+              if (message.type === "hide_votes") {
+                try {
+                  await prisma.session.update({
+                    where: { id: sessionId },
+                    data: { votesRevealed: false },
+                  });
+                  await sendStateUpdate();
+                } catch (error) {
+                  console.error(
+                    `Error handling hide_votes in session ${sessionId}:`,
+                    error
+                  );
+                }
+              }
+
+              if (message.type === "disconnected" && message.name) {
+                // We don't delete users on disconnect in DB-based system
+                // They'll reappear when they reconnect
+                // Just remove socket connection from active connections
+                delete activeConnections[socketId];
+              }
+
+              if (message.type === "remove_user" && message.name) {
+                try {
+                  // Find the user to remove
+                  const userToRemove = await prisma.user.findFirst({
+                    where: {
+                      name: message.name,
+                      sessionId,
+                    },
+                  });
+
+                  if (userToRemove) {
+                    // Notify all users including the one being removed
+                    Object.values(activeConnections).forEach((conn) => {
+                      if (
+                        conn.sessionId === sessionId &&
+                        conn.socket.readyState === WebSocket.OPEN
+                      ) {
+                        console.log("Sending User Removed to User");
+                        conn.socket.send(
+                          JSON.stringify({
+                            type: "user_removed",
+                            name: message.name,
+                          })
+                        );
+                      }
+                    });
+
+                    // Delete the user - cascades to votes due to relations
+                    await prisma.user.delete({
+                      where: { id: userToRemove.id },
+                    });
+
+                    // Send updated state to remaining users
+                    await sendStateUpdate();
+                  }
+                } catch (error) {
+                  console.error(
+                    `Error removing user ${message.name} for session ${sessionId}:`,
+                    error
+                  );
+                }
               }
             } catch (error) {
               console.error(
-                `Error handling disconnect event for session ${sessionId}:`,
+                `Error parsing message in session ${sessionId}:`,
                 error
               );
             }
-          }
+          });
 
-          if (message.type === "remove_user" && message.name) {
+          ws.on("close", () => {
             try {
-              // First notify all users including the one being removed
-              Object.values(sessions[sessionId].users).forEach((user) => {
-                if (user.socket?.readyState === WebSocket.OPEN) {
-                  console.log("Sending User Removed to User");
-                  user.socket.send(
-                    JSON.stringify({ type: "user_removed", name: message.name })
-                  );
-                }
-              });
+              // Remove connection from active connections
+              delete activeConnections[socketId];
 
-              // Then delete the user data
-              delete sessions[sessionId].users[message.name];
-              delete sessions[sessionId].votes[message.name];
-
-              // Finally send state update to remaining users
-              sendStateUpdate();
+              // We don't delete users on disconnect in DB-based system
+              // They can reconnect later
             } catch (error) {
               console.error(
-                `Error removing user ${message.name} for session ${sessionId}:`,
+                `Error handling WebSocket close for session ${sessionId}:`,
                 error
               );
             }
-          }
-        } catch (error) {
-          console.error(
-            `Error parsing message in session ${sessionId}:`,
-            error
+          });
+        })
+        .catch((error) => {
+          console.error("Error verifying session:", error);
+          ws.send(
+            JSON.stringify({
+              type: "no_session_error",
+              message: "Error connecting to session",
+            })
           );
-        }
-      });
-
-      ws.on("close", () => {
-        try {
-          // Find and remove the disconnected user
-          const disconnectedUser = Object.entries(
-            sessions[sessionId].users
-          ).find(([_, user]) => user.socket === ws);
-
-          if (disconnectedUser) {
-            const [userName] = disconnectedUser;
-            delete sessions[sessionId].users[userName];
-
-            // Clean up empty sessions
-            if (Object.keys(sessions[sessionId].users).length === 0) {
-              delete sessions[sessionId];
-            }
-          }
-        } catch (error) {
-          console.error(
-            `Error handling WebSocket close for session ${sessionId}:`,
-            error
-          );
-        }
-      });
+          ws.close();
+        });
     });
   })
   .catch((error) => {
     console.error("Failed to start server:", error);
     process.exit(1);
   });
-
-app.use(express.static("public")); // Serve HTML, JS, and CSS from the 'public' folder

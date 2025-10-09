@@ -8,7 +8,8 @@ A real-time web application for conducting Planning Poker sessions during Agile 
 graph TD
     Client[Browser Client] -->|WebSocket| Server[Node.js Server]
     Server -->|Session State| Client
-    Server -->|Store| Memory[In-Memory Sessions]
+    Server -->|Store| Database[PostgreSQL Database]
+    Database -->|Fetch| Server
 ```
 
 ### Components
@@ -22,9 +23,9 @@ graph TD
 - **Backend (Node.js Server)**:
   - Express.js web server for static file serving
   - WebSocket server for real-time communication
-  - In-memory session storage with UUID-based keys
+  - PostgreSQL database for persistent storage
+  - Prisma ORM for database access
   - Maintains vote state (hidden/revealed)
-  - Cleans up inactive sessions automatically
   - Handles user joins/disconnects and vote updates
 
 ## Setup
@@ -42,17 +43,30 @@ cd scrum-poker
 npm install
 ```
 
-3. Start the development server:
+3. Set up your environment variables:
+
+   - Create a `.env` file in the project root
+   - Add your PostgreSQL connection string: `DATABASE_URL="postgresql://username:password@localhost:5432/scrum_poker?schema=public"`
+
+4. Run database migrations:
+
+```bash
+npm run prisma:migrate
+```
+
+5. Start the development server:
 
 ```bash
 npm run dev
 ```
 
-4. Open `http://localhost:3000` in your browser (port may vary if 3000 is in use)
+6. Open `http://localhost:3000` in your browser (port may vary if 3000 is in use)
 
 ## Development
 
 - Run in development mode with hot reload: `npm run dev`
+- Generate Prisma client after schema changes: `npm run prisma:generate`
+- Run database migrations: `npm run prisma:migrate`
+- View and edit your database: `npm run prisma:studio`
 - Build TypeScript for production: `npm run build`
 - Start production server: `npm start`
-- Run type checking: `npm run type-check`

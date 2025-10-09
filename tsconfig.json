@@ -15,7 +15,8 @@
     "moduleDetection": "force",
     "verbatimModuleSyntax": true,
     "lib": ["es2022", "dom", "dom.iterable"],
-    "erasableSyntaxOnly": true
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"]
